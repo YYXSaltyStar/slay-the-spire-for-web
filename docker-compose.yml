@@ -1,0 +1,12 @@
+services:
+  slay-the-spire:
+    build: .
+    container_name: slay-the-spire-web
+    ports:
+      - "14514:14514"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    environment:
+      - SECRET_KEY=MReRne27pp4nXeMvBF4hojUlqwyoUYHW
+      - PORT=14514 

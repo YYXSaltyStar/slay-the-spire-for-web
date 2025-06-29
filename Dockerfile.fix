@@ -1,0 +1,7 @@
+FROM slay-the-spire-web
+
+# 修复game.py文件
+RUN sed -i '133s/        input/            input/' /app/src/game.py
+
+# 设置启动命令
+CMD ["/app/start.sh"]
