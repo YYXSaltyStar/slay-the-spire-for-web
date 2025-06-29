@@ -2,11 +2,11 @@
 import os
 import sys
 import json
-from flask import Flask, render_template, request, session
+import time
+from flask import Flask, render_template, request, session, jsonify
 from flask_socketio import SocketIO, emit
 from io import StringIO
 import threading
-import time
 import logging
 import traceback
 import argparse
@@ -27,7 +27,13 @@ from src.models import GameState, Character, Enemy, DB_PATH
 # 创建Flask应用
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'slay-the-spire-secret')
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, 
+                   cors_allowed_origins="*", 
+                   ping_timeout=60,
+                   ping_interval=25,
+                   async_mode='eventlet',
+                   logger=True,
+                   engineio_logger=True)
 
 # 存储用户会话
 game_sessions = {}
@@ -278,6 +284,29 @@ def handle_player_action(data):
         logger.error(f"Error processing action '{action}' for {sid}: {e}")
         logger.error(traceback.format_exc())
         socketio.emit('game_error', {'error': f'处理操作失败: {e}'}, room=sid)
+
+@app.route('/simple')
+def simple_page():
+    """简单测试页面"""
+    import datetime
+    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    logger.info(f"访问简单测试页面: {request.remote_addr}")
+    return render_template('simple.html', current_time=current_time)
+
+@app.route('/test')
+def test_page():
+    """测试页面"""
+    logger.info(f"访问测试页面: {request.remote_addr}")
+    return render_template('test.html')
+
+@app.route('/api/test')
+def test_api():
+    """测试API是否正常工作"""
+    return jsonify({
+        "status": "success",
+        "message": "API正常工作",
+        "time": time.time()
+    })
 
 if __name__ == '__main__':
     # 创建templates和static目录（如果不存在）

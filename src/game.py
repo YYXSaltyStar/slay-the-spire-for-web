@@ -131,7 +131,7 @@ class SlayTheSpireGame:
     def wait_for_key(self):
         """等待按键"""
         try:
-        input(Fore.GREEN + "按回车键继续..." + Style.RESET_ALL)
+            input(Fore.GREEN + "按回车键继续..." + Style.RESET_ALL)
         except EOFError:
             # 如果在管道输入中，直接返回
             pass
@@ -216,7 +216,7 @@ class SlayTheSpireGame:
         # 显示玩家状态
         if self.print_player_status():
             # 如果玩家选择了继续游戏，进入游戏循环
-        self.game_loop()
+            self.game_loop()
     
     def load_game(self):
         """加载游戏"""
@@ -244,22 +244,24 @@ class SlayTheSpireGame:
                 
                 print(Fore.GREEN + f"欢迎回来，{player_name}！你的角色是 {self.game_state.player.name}。" + Style.RESET_ALL)
                 print(Fore.GREEN + f"当前楼层: {self.game_state.floor}" + Style.RESET_ALL)
-            self.wait_for_key()
-            
+                self.wait_for_key()
+
                 # 显示玩家状态
                 if self.print_player_status():
                     # 如果玩家选择了继续游戏，进入游戏循环
-            self.game_loop()
-        else:
+                    self.game_loop()
+            else:
                 print(Fore.RED + f"找不到存档 '{player_name}'。" + Style.RESET_ALL)
-            self.wait_for_key()
+                self.wait_for_key()
                 self.show_main_menu()
+
         except Exception as e:
             print(Fore.RED + f"加载游戏失败: {str(e)}" + Style.RESET_ALL)
             import traceback
             traceback.print_exc()
             self.wait_for_key()
             self.show_main_menu()
+
     
     def game_loop(self):
         """游戏主循环"""
@@ -590,9 +592,9 @@ class SlayTheSpireGame:
             self.generate_map()
             
         while True:
-        self.clear_screen()
+            self.clear_screen()
         
-        print(Fore.YELLOW + f"楼层: {self.game_state.floor}" + Style.RESET_ALL)
+            print(Fore.YELLOW + f"楼层: {self.game_state.floor}" + Style.RESET_ALL)
             
             # 显示玩家基本信息
             player = self.game_state.player
@@ -604,8 +606,7 @@ class SlayTheSpireGame:
             # 显示当前位置
             if self.current_node:
                 print(f"当前位置: {self.current_node.node_type} {EMOJI.get(self.current_node.node_type, '')}")
-                
-        self.print_separator()
+                self.print_separator()
         
             # 显示可选择的路径
             if self.current_node and self.current_node.connections:
@@ -613,24 +614,23 @@ class SlayTheSpireGame:
                 for i, node in enumerate(self.current_node.connections, 1):
                     print(f"{i}. {node.node_type} {EMOJI[node.node_type]}")
                 print()
-            
-        print(Fore.CYAN + "你可以选择:" + Style.RESET_ALL)
+                print(Fore.CYAN + "你可以选择:" + Style.RESET_ALL)
+
             if self.current_node and self.current_node.connections:
                 print("1-9. 选择路径")
-            print("A. 遭遇战斗")
-            print("R. 休息")
-            print("S. 商店")
-            print("D. 查看卡组")
-            print("E. 查看遗物")
-            print("C. 卡牌图鉴")
-            print("T. 遗物图鉴")
-            print("V. 保存游戏")
-            print("Q. 返回主菜单")
-            print("M. 查看地图")
-            print("H. 帮助")
-        print()
-        
-            choice = input("> ").upper()
+                print("A. 遭遇战斗")
+                print("R. 休息")
+                print("S. 商店")
+                print("D. 查看卡组")
+                print("E. 查看遗物")
+                print("C. 卡牌图鉴")
+                print("T. 遗物图鉴")
+                print("V. 保存游戏")
+                print("Q. 返回主菜单")
+                print("M. 查看地图")
+                print("H. 帮助")
+                print()
+                choice = input("> ").upper()
             
             # 处理路径选择
             if choice.isdigit() and 1 <= int(choice) <= 9:
@@ -649,34 +649,33 @@ class SlayTheSpireGame:
             # 处理其他选项
             if choice == "A":
             # 开始战斗
-            enemy_count = 1
-            if self.game_state.floor % 10 == 0:  # Boss战
-                print(Fore.RED + "你遇到了Boss!" + Style.RESET_ALL)
-                self.game_state.start_combat(1, False, True)
-            elif self.game_state.floor % 5 == 0:  # 精英战
-                print(Fore.MAGENTA + "你遇到了精英敌人!" + Style.RESET_ALL)
-                self.game_state.start_combat(1, True, False)
+                enemy_count = 1
+                if self.game_state.floor % 10 == 0:  # Boss战
+                    print(Fore.RED + "你遇到了Boss!" + Style.RESET_ALL)
+                    self.game_state.start_combat(1, False, True)
+                elif self.game_state.floor % 5 == 0:  # 精英战
+                    print(Fore.MAGENTA + "你遇到了精英敌人!" + Style.RESET_ALL)
+                    self.game_state.start_combat(1, True, False)
                 else:  # 普通战斗
                     self.game_state.start_combat(1, False, False)
-                
-                # 进入战斗循环
-                self.combat_loop()
+                    # 进入战斗循环
+                    self.combat_loop()
             
             elif choice == "R":
             # 休息
-            self.rest()
+                self.rest()
         
             elif choice == "S":
             # 商店
-            self.shop()
+                self.shop()
         
             elif choice == "D":
             # 查看卡组
-            self.view_deck()
+                self.view_deck()
         
             elif choice == "E":
             # 查看遗物
-            self.view_relics()
+                self.view_relics()
         
             elif choice == "C":
                 # 卡牌图鉴
@@ -688,9 +687,9 @@ class SlayTheSpireGame:
                 
             elif choice == "V":
             # 保存游戏
-            self.game_state.save_game(self.player_name)
+                self.game_state.save_game(self.player_name)
                 print(Fore.GREEN + "游戏已保存!" + Style.RESET_ALL)
-            self.wait_for_key()
+                self.wait_for_key()
         
             elif choice == "Q":
             # 返回主菜单
@@ -702,11 +701,11 @@ class SlayTheSpireGame:
             
             elif choice == "H":
                 # 帮助
-            self.show_help()
+                self.show_help()
         
-        else:
-            print(Fore.RED + "无效的选择，请重试" + Style.RESET_ALL)
-            self.wait_for_key()
+            else:
+                print(Fore.RED + "无效的选择，请重试" + Style.RESET_ALL)
+                self.wait_for_key()
                 continue
     
     def move_to_node(self, node):
@@ -912,7 +911,7 @@ class SlayTheSpireGame:
         """提供卡牌奖励选择"""
         import duckdb
         
-            self.clear_screen()
+        self.clear_screen()
         print(Fore.GREEN + "选择一张卡牌添加到你的牌组:" + Style.RESET_ALL)
         
         # 连接数据库
@@ -1171,7 +1170,7 @@ class SlayTheSpireGame:
                 print("5. 故障机器人遗物")
                 print("6. 按稀有度查看")
                 print("7. 返回")
-            print()
+                print()
             
                 try:
                     choice = input("> ")
@@ -1447,18 +1446,24 @@ class SlayTheSpireGame:
                             self.show_card_details(all_cards[card_idx])
                         else:
                             print(Fore.RED + "无效的卡牌编号" + Style.RESET_ALL)
-                    self.wait_for_key()
-                except ValueError:
+                            self.wait_for_key()
+                    except ValueError:
                         print(Fore.RED + "请输入有效的数字" + Style.RESET_ALL)
                         self.wait_for_key()
+                    except EOFError:
+                        # 如果在管道输入中，直接返回
+                        break
+                    except Exception as e:
+                        print(f"显示角色卡牌出错: {str(e)}")
+                        import traceback
+                        traceback.print_exc()
+                        self.wait_for_key()
                 except EOFError:
-                    # 如果在管道输入中，直接返回
+                    # 外层 input 出现 EOF（比如管道输入）
                     break
         except Exception as e:
-            print(f"显示角色卡牌出错: {str(e)}")
-            import traceback
-            traceback.print_exc()
-                    self.wait_for_key()
+            print(f"读取输入时发生错误: {str(e)}")
+            self.wait_for_key()
             
     def show_card_details(self, card):
         """显示卡牌详细信息，包括升级后的效果"""
@@ -1606,8 +1611,8 @@ class SlayTheSpireGame:
                 print(f"   楼层: {floor} | 生命: {current_hp}/{max_hp} | 金币: {gold}")
                 print(f"   创建时间: {created_date} | 最后更新: {updated_date}")
             
-            print("\n[b] 返回")
-            print()
+                print("\n[b] 返回")
+                print()
             
             try:
                 choice = input("> ")
@@ -1619,7 +1624,7 @@ class SlayTheSpireGame:
                     index = int(choice) - 1
                     if 0 <= index < len(saves):
                         self.show_save_details(saves[index][0])
-            else:
+                    else:
                         print(Fore.RED + "无效的选择，请重试" + Style.RESET_ALL)
                         self.wait_for_key()
                 except ValueError:
@@ -1632,14 +1637,14 @@ class SlayTheSpireGame:
             print(f"显示存档列表出错: {str(e)}")
             import traceback
             traceback.print_exc()
-                self.wait_for_key()
+            self.wait_for_key()
     
     def show_save_details(self, save_id):
         """显示存档详细信息"""
         import duckdb
         
         try:
-        self.clear_screen()
+            self.clear_screen()
         
             # 连接数据库
             con = duckdb.connect(DB_PATH)
@@ -1708,7 +1713,7 @@ class SlayTheSpireGame:
             print("\n" + Fore.CYAN + "卡组:" + Style.RESET_ALL)
             if not cards:
                 print(Fore.YELLOW + "没有卡牌" + Style.RESET_ALL)
-        else:
+            else:
                 # 按类型分类
                 cards_by_type = {
                     "Attack": [],
@@ -2035,7 +2040,7 @@ class SlayTheSpireGame:
                 # 检查能量是否足够
                 if player.energy < card.energy_cost:
                     print(Fore.RED + f"能量不足! 需要 {card.energy_cost} 点能量。" + Style.RESET_ALL)
-        self.wait_for_key()
+                    self.wait_for_key()
                     continue
                 
                 # 如果是攻击牌，需要选择目标
@@ -2162,7 +2167,7 @@ class SlayTheSpireGame:
             
             elif choice == "V":
                 # 查看弃牌堆
-        self.clear_screen()
+                self.clear_screen()
                 print(Fore.CYAN + "弃牌堆:" + Style.RESET_ALL)
                 if not player.discard_pile:
                     print("弃牌堆为空")
@@ -2297,7 +2302,7 @@ class SlayTheSpireGame:
             return
         else:
             print(Fore.RED + "无效的选择，请重试" + Style.RESET_ALL)
-        self.wait_for_key()
+            self.wait_for_key()
             self.shop()
     
     def view_deck(self):
@@ -2328,7 +2333,7 @@ class SlayTheSpireGame:
                     print(Fore.GREEN + f"\n技能牌 ({len(type_cards)}):" + Style.RESET_ALL)
                 elif card_type == "Power":
                     print(Fore.BLUE + f"\n能力牌 ({len(type_cards)}):" + Style.RESET_ALL)
-            else:
+                else:
                     print(Fore.WHITE + f"\n其他牌 ({len(type_cards)}):" + Style.RESET_ALL)
                 
                 for card in type_cards:

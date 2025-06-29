@@ -851,6 +851,10 @@ class GameState:
         self.current_enemies = []
         self.in_combat = False
         self.game_over = False
+        self.rewards = {}  # 奖励
+        self.current_event = None  # 当前事件
+        self.screen = 'map'  # 当前界面
+        self.shop_prices = {}  # 商店价格
     
     def new_game(self, character_id, player_name):
         """创建新游戏"""

@@ -14,20 +14,45 @@ fi
 
 # 设置应用名称和端口
 APP_NAME="slay-the-spire-web"
+IMAGE_NAME="${APP_NAME}:latest"
 PORT=14514
 
 # 创建必要的目录
 echo "创建必要目录..."
 mkdir -p data
 
+# 检查是否需要重新构建镜像
+echo "检查镜像状态..."
+
+REBUILD=0
+# 检查镜像是否存在
+if ! docker image inspect ${IMAGE_NAME} &>/dev/null; then
+    echo "镜像不存在，需要构建"
+    REBUILD=1
+else 
+    # 检查Dockerfile和requirements.txt是否变更
+    echo "检查依赖文件是否有变更..."
+    # 这里可以添加某种方式来检查文件是否变更，例如md5sum比较
+    # 为了简单，我们询问用户是否强制重新构建
+    read -p "要强制重新构建镜像吗？(y/N) " force_rebuild
+    if [[ "$force_rebuild" == "y" || "$force_rebuild" == "Y" ]]; then
+        REBUILD=1
+    fi
+fi
+
 # 停止并移除旧容器（如果存在）
 echo "停止旧容器（如果存在）..."
 docker stop $APP_NAME 2>/dev/null || true
 docker rm $APP_NAME 2>/dev/null || true
 
-# 构建镜像
-echo "构建Docker镜像..."
-docker build -t $APP_NAME .
+# 如果需要，构建镜像
+if [ $REBUILD -eq 1 ]; then
+    echo "构建Docker镜像..."
+    # 使用缓存进行构建
+    docker build --pull -t $IMAGE_NAME .
+else
+    echo "使用现有镜像 $IMAGE_NAME..."
+fi
 
 # 启动容器
 echo "启动容器..."
@@ -38,7 +63,7 @@ docker run -d \
   -e SECRET_KEY=MReRne27pp4nXeMvBF4hojUlqwyoUYHW \
   -e PORT=$PORT \
   --restart unless-stopped \
-  $APP_NAME
+  $IMAGE_NAME
 
 # 等待服务启动
 echo "等待服务启动..."

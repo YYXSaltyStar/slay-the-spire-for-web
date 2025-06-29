@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>简单测试页面</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            text-align: center;
+        }
+        h1 {
+            color: #333;
+        }
+        .success {
+            color: green;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>简单测试页面</h1>
+    <p class="success">如果您能看到这个页面，说明服务器工作正常！</p>
+    <p>当前时间: {{ current_time }}</p>
+    <p><a href="/api/test">测试API</a></p>
+</body>
+</html> 

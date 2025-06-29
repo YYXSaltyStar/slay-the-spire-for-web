@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket测试</title>
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>WebSocket连接测试</h1>
+    <button id="connectBtn">连接</button>
+    <button id="disconnectBtn" disabled>断开</button>
+    <div id="status">未连接</div>
+    <script>
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const status = document.getElementById('status');
+        let socket;
+
+        connectBtn.addEventListener('click', () => {
+            status.textContent = '正在连接...';
+            socket = io('http://10.64.198.145:14514', {
+                transports: ['websocket', 'polling'],
+                reconnectionAttempts: 3,
+                timeout: 5000
+            });
+
+            socket.on('connect', () => {
+                status.textContent = '已连接！Socket ID: ' + socket.id;
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+                console.log('Connected to server');
+            });
+
+            socket.on('connect_error', (error) => {
+                status.textContent = '连接错误: ' + error.message;
+                console.error('Connection error:', error);
+            });
+
+            socket.on('disconnect', (reason) => {
+                status.textContent = '已断开连接: ' + reason;
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                console.log('Disconnected:', reason);
+            });
+
+            socket.on('connected', (data) => {
+                status.textContent += ' | 服务器确认连接: ' + JSON.stringify(data);
+                console.log('Server acknowledged connection:', data);
+            });
+        });
+
+        disconnectBtn.addEventListener('click', () => {
+            if (socket) {
+                socket.disconnect();
+                status.textContent = '手动断开连接';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+            }
+        });
+    </script>
+</body>
+</html> 

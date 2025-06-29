@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket测试</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .status { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .warning { background-color: #fff3cd; color: #856404; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        button { padding: 10px; margin: 5px; cursor: pointer; }
+        #log { border: 1px solid #ccc; padding: 10px; height: 300px; overflow-y: auto; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>WebSocket连接测试</h1>
+    
+    <div id="status" class="status info">准备连接...</div>
+    
+    <button id="connectBtn">连接</button>
+    <button id="disconnectBtn" disabled>断开</button>
+    <button id="testApiBtn">测试API</button>
+    
+    <div>
+        <h3>连接选项:</h3>
+        <label>
+            <input type="checkbox" id="usePolling" checked> 使用轮询 (polling)
+        </label>
+        <label>
+            <input type="checkbox" id="useWebsocket" checked> 使用WebSocket
+        </label>
+    </div>
+    
+    <h3>日志:</h3>
+    <div id="log"></div>
+    
+    <script>
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const testApiBtn = document.getElementById('testApiBtn');
+        const status = document.getElementById('status');
+        const log = document.getElementById('log');
+        const usePolling = document.getElementById('usePolling');
+        const useWebsocket = document.getElementById('useWebsocket');
+        
+        let socket;
+        
+        function addLog(message, type = 'info') {
+            const now = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = type;
+            logEntry.textContent = `[${now}] ${message}`;
+            log.appendChild(logEntry);
+            log.scrollTop = log.scrollHeight;
+        }
+        
+        function updateStatus(message, type) {
+            status.textContent = message;
+            status.className = `status ${type}`;
+        }
+        
+        connectBtn.addEventListener('click', () => {
+            updateStatus('正在连接...', 'info');
+            addLog('尝试连接到服务器...');
+            
+            // 构建传输选项
+            const transports = [];
+            if (useWebsocket.checked) transports.push('websocket');
+            if (usePolling.checked) transports.push('polling');
+            
+            if (transports.length === 0) {
+                updateStatus('错误: 至少选择一种传输方式', 'error');
+                addLog('错误: 至少选择一种传输方式', 'error');
+                return;
+            }
+            
+            try {
+                const currentUrl = window.location.origin;
+                addLog(`连接URL: ${currentUrl}`);
+                addLog(`传输方式: ${transports.join(', ')}`);
+                
+                socket = io(currentUrl, {
+                    transports: transports,
+                    reconnection: true,
+                    reconnectionAttempts: 3,
+                    reconnectionDelay: 1000,
+                    timeout: 10000
+                });
+                
+                socket.on('connect', () => {
+                    updateStatus(`已连接! Socket ID: ${socket.id}`, 'success');
+                    addLog(`连接成功! Socket ID: ${socket.id}`, 'success');
+                    connectBtn.disabled = true;
+                    disconnectBtn.disabled = false;
+                });
+                
+                socket.on('connect_error', (error) => {
+                    updateStatus(`连接错误: ${error.message}`, 'error');
+                    addLog(`连接错误: ${error.message}`, 'error');
+                    addLog(`错误详情: ${JSON.stringify(error)}`, 'error');
+                });
+                
+                socket.on('disconnect', (reason) => {
+                    updateStatus(`已断开连接: ${reason}`, 'warning');
+                    addLog(`已断开连接: ${reason}`, 'warning');
+                    connectBtn.disabled = false;
+                    disconnectBtn.disabled = true;
+                });
+                
+                socket.on('connected', (data) => {
+                    addLog(`服务器确认连接: ${JSON.stringify(data)}`, 'success');
+                });
+                
+                socket.on('error', (error) => {
+                    addLog(`Socket错误: ${error}`, 'error');
+                });
+            } catch (error) {
+                updateStatus(`初始化错误: ${error.message}`, 'error');
+                addLog(`初始化错误: ${error.message}`, 'error');
+                addLog(`错误堆栈: ${error.stack}`, 'error');
+            }
+        });
+        
+        disconnectBtn.addEventListener('click', () => {
+            if (socket) {
+                socket.disconnect();
+                updateStatus('手动断开连接', 'info');
+                addLog('手动断开连接');
+            }
+        });
+        
+        testApiBtn.addEventListener('click', () => {
+            addLog('测试API请求...');
+            fetch('/api/test')
+                .then(response => {
+                    addLog(`API响应状态: ${response.status} ${response.statusText}`, 'info');
+                    return response.json();
+                })
+                .then(data => {
+                    addLog(`API响应数据: ${JSON.stringify(data)}`, 'success');
+                })
+                .catch(error => {
+                    addLog(`API请求错误: ${error.message}`, 'error');
+                });
+        });
+        
+        // 初始状态
+        addLog('页面加载完成，等待连接...');
+    </script>
+</body>
+</html> 

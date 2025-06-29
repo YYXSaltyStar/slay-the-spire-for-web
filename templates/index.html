@@ -6,7 +6,14 @@
     <title>杀戮尖塔 - 网页版</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        // 添加全局错误处理
+        window.onerror = function(message, source, lineno, colno, error) {
+            console.error('全局错误:', message, source, lineno, colno, error);
+            alert('发生错误: ' + message);
+        };
+    </script>
 </head>
 <body>
     <div class="container">
@@ -23,7 +30,11 @@
                 <div id="discard-pile">弃牌堆: 0</div>
             </div>
         </div>
-        <div id="game-screen"></div>
+        <div id="game-container">
+            <div id="game-screen"></div>
+            <div id="game-controls">
+            </div>
+        </div>
     </div>
 
     <!-- JS模板 -->
@@ -167,39 +178,70 @@
     </template>
 
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const socket = io();
-            const gameScreen = document.getElementById('game-screen');
-            const playerStatus = document.getElementById('player-status');
-
-            let gameState = null;
-            let selectedTarget = null; // 用于攻击时选择目标
-
-            // 节点类型对应的Emoji
-            const NODE_EMOJIS = {
-                '战斗': '⚔️',
-                '精英': '👹',
-                'BOSS': '👑',
-                '宝箱': '💰',
-                '商店': '🏪',
-                '休息': '🔥',
-                '事件': '❓'
-            };
-
-            // --- 渲染函数 ---
+        // 动态获取当前页面的主机名和端口
+        const currentUrl = window.location.origin;
+        console.log('Current URL:', currentUrl);
+        
+        // 添加Socket.IO连接状态监听
+        let socket;
+        try {
+            socket = io(currentUrl, {
+                transports: ['websocket', 'polling'],
+                reconnection: true,
+                reconnectionAttempts: 5,
+                reconnectionDelay: 1000,
+                timeout: 20000,
+                autoConnect: false // 手动连接
+            });
             
-            function render(state) {
-                gameState = state;
-                if (!state) {
-                    renderMainMenu();
-                    playerStatus.classList.add('hidden');
-                    return;
-                }
-                
-                updatePlayerStatus(state.player);
-                playerStatus.classList.remove('hidden');
+            // 连接事件监听
+            socket.on('connect', () => {
+                console.log('Socket.IO连接成功! ID:', socket.id);
+                document.getElementById('game-controls').innerHTML += '<span style="color: green;">已连接</span>';
+            });
+            
+            socket.on('connect_error', (error) => {
+                console.error('Socket.IO连接错误:', error);
+                document.getElementById('game-controls').innerHTML += '<span style="color: red;">连接错误: ' + error.message + '</span>';
+            });
+            
+            socket.on('disconnect', (reason) => {
+                console.log('Socket.IO断开连接:', reason);
+                document.getElementById('game-controls').innerHTML += '<span style="color: orange;">已断开: ' + reason + '</span>';
+            });
+            
+            // 手动连接
+            console.log('正在连接Socket.IO...');
+            socket.connect();
+        } catch (error) {
+            console.error('Socket.IO初始化错误:', error);
+            alert('Socket.IO初始化错误: ' + error.message);
+        }
+        
+        const gameScreen = document.getElementById('game-screen');
+        let gameState = null;
+        let selectedTarget = null;
 
-                switch (state.screen) {
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            const playerStatus = document.getElementById('player-status');
+            
+            // 初始化游戏界面
+            renderMainMenu();
+            
+            // WebSocket事件处理
+            socket.on('connected', function(data) {
+                console.log('Connected to server with SID:', data.sid);
+            });
+
+            socket.on('update_state', function(state) {
+                if (!state) return;
+                
+                gameState = state;
+                console.log('Game state updated:', state);
+                
+                // 根据当前屏幕渲染相应界面
+                switch(state.screen) {
                     case 'map':
                         renderMap(state);
                         break;
@@ -219,239 +261,234 @@
                         renderEvent(state);
                         break;
                     default:
-                        renderMainMenu();
+                        renderMap(state);
                 }
+            });
+
+            socket.on('game_error', function(data) {
+                console.error('Game Error:', data.error);
+                alert(`发生错误: ${data.error}`);
+            });
+        });
+        
+        // 节点类型对应的Emoji
+        const NODE_EMOJIS = {
+            '战斗': '⚔️',
+            '精英': '👹',
+            'BOSS': '👑',
+            '宝箱': '💰',
+            '商店': '🏪',
+            '休息': '🔥',
+            '事件': '❓'
+        };
+
+        // --- 渲染函数 ---
+        
+        function render(state) {
+            gameState = state;
+            if (!state) {
+                renderMainMenu();
+                playerStatus.classList.add('hidden');
+                return;
             }
             
-            function renderMainMenu() {
-                const template = document.getElementById('main-menu-template').content.cloneNode(true);
-                gameScreen.innerHTML = '';
-                gameScreen.appendChild(template);
-                
-                document.getElementById('new-game-btn').addEventListener('click', () => {
-                    renderCharacterSelect();
-                });
-                
-                document.getElementById('load-game-btn').addEventListener('click', () => {
-                    renderLoadGame();
-                });
-            }
+            updatePlayerStatus(state.player);
+            playerStatus.classList.remove('hidden');
 
-            function renderLoadGame() {
-                const template = document.getElementById('load-game-template').content.cloneNode(true);
-                gameScreen.innerHTML = '';
-                gameScreen.appendChild(template);
-                
-                document.getElementById('load-save-btn').addEventListener('click', () => {
-                    const saveName = document.getElementById('save-name-input').value;
-                    if (!saveName) {
-                        alert('请输入存档名');
-                        return;
-                    }
-                    socket.emit('load_game', { saveName });
-                });
-                
-                document.getElementById('back-to-menu-btn').addEventListener('click', () => {
+            switch (state.screen) {
+                case 'map':
+                    renderMap(state);
+                    break;
+                case 'combat':
+                    renderCombat(state);
+                    break;
+                case 'rewards':
+                    renderRewards(state);
+                    break;
+                case 'shop':
+                    renderShop(state);
+                    break;
+                case 'rest':
+                    renderRestSite(state);
+                    break;
+                case 'event':
+                    renderEvent(state);
+                    break;
+                default:
                     renderMainMenu();
-                });
             }
+        }
+        
+        function renderMainMenu() {
+            const template = document.getElementById('main-menu-template').content.cloneNode(true);
+            gameScreen.innerHTML = '';
+            gameScreen.appendChild(template);
+            
+            document.getElementById('new-game-btn').addEventListener('click', () => {
+                renderCharacterSelect();
+            });
+            
+            document.getElementById('load-game-btn').addEventListener('click', () => {
+                renderLoadGame();
+            });
+        }
 
-            function renderCharacterSelect() {
-                const template = document.getElementById('character-select-template').content.cloneNode(true);
-                gameScreen.innerHTML = '';
-                gameScreen.appendChild(template);
+        function renderLoadGame() {
+            const template = document.getElementById('load-game-template').content.cloneNode(true);
+            gameScreen.innerHTML = '';
+            gameScreen.appendChild(template);
+            
+            document.getElementById('load-save-btn').addEventListener('click', () => {
+                const saveName = document.getElementById('save-name-input').value;
+                if (!saveName) {
+                    alert('请输入存档名');
+                    return;
+                }
+                socket.emit('load_game', { saveName });
+            });
+            
+            document.getElementById('back-to-menu-btn').addEventListener('click', () => {
+                renderMainMenu();
+            });
+        }
 
-                document.querySelectorAll('.character-card').forEach(card => {
-                    card.addEventListener('click', (e) => {
-                        document.querySelectorAll('.character-card').forEach(c => c.classList.remove('selected'));
-                        e.currentTarget.classList.add('selected');
-                    });
+        function renderCharacterSelect() {
+            const template = document.getElementById('character-select-template').content.cloneNode(true);
+            gameScreen.innerHTML = '';
+            gameScreen.appendChild(template);
+
+            document.querySelectorAll('.character-card').forEach(card => {
+                card.addEventListener('click', (e) => {
+                    document.querySelectorAll('.character-card').forEach(c => c.classList.remove('selected'));
+                    e.currentTarget.classList.add('selected');
                 });
-                
-                document.getElementById('start-game-btn').addEventListener('click', () => {
-                    const selectedChar = document.querySelector('.character-card.selected');
-                    if (!selectedChar) {
-                        alert('请选择一个角色');
-                        return;
+            });
+            
+            document.getElementById('start-game-btn').addEventListener('click', () => {
+                const selectedChar = document.querySelector('.character-card.selected');
+                if (!selectedChar) {
+                    alert('请选择一个角色');
+                    return;
+                }
+                const characterId = selectedChar.dataset.charId;
+                const playerName = document.getElementById('player-name-input').value || '无名英雄';
+                socket.emit('new_game', { characterId, playerName });
+            });
+        }
+
+        function updatePlayerStatus(player) {
+            document.getElementById('player-name').textContent = player.name;
+            document.getElementById('player-hp').textContent = `❤️ ${player.health}/${player.maxHealth}`;
+            document.getElementById('player-energy').textContent = `⚡️ ${player.energy}/${player.maxEnergy}`;
+            document.getElementById('player-gold').textContent = `💰 ${player.gold}`;
+            document.getElementById('player-block').textContent = player.block > 0 ? `🛡️ ${player.block}` : '';
+
+            const drawPile = document.getElementById('draw-pile');
+            const discardPile = document.getElementById('discard-pile');
+            drawPile.textContent = `抽牌堆: ${player.drawPile.length}`;
+            discardPile.textContent = `弃牌堆: ${player.discardPile.length}`;
+        }
+
+        function renderMap(state) {
+            const template = document.getElementById('map-screen-template').content.cloneNode(true);
+            gameScreen.innerHTML = '';
+            gameScreen.appendChild(template);
+            
+            document.getElementById('floor-number').textContent = state.floor;
+            const mapNodesContainer = document.getElementById('map-nodes');
+            mapNodesContainer.innerHTML = '';
+
+            state.map.nodes.forEach((row, rowIndex) => {
+                const rowDiv = document.createElement('div');
+                rowDiv.className = 'map-row';
+                row.forEach((node, colIndex) => {
+                    const nodeDiv = document.createElement('div');
+                    nodeDiv.className = 'map-node';
+                    nodeDiv.textContent = NODE_EMOJIS[node.type] || node.type;
+                    nodeDiv.dataset.row = rowIndex;
+                    nodeDiv.dataset.col = colIndex;
+                    nodeDiv.title = node.type; // 鼠标悬停提示
+                    
+                    if (node.visited) {
+                        nodeDiv.classList.add('visited');
                     }
-                    const characterId = selectedChar.dataset.charId;
-                    const playerName = document.getElementById('player-name-input').value || '无名英雄';
-                    socket.emit('new_game', { characterId, playerName });
-                });
-            }
-
-            function updatePlayerStatus(player) {
-                document.getElementById('player-name').textContent = player.name;
-                document.getElementById('player-hp').textContent = `❤️ ${player.health}/${player.maxHealth}`;
-                document.getElementById('player-energy').textContent = `⚡️ ${player.energy}/${player.maxEnergy}`;
-                document.getElementById('player-gold').textContent = `💰 ${player.gold}`;
-                document.getElementById('player-block').textContent = player.block > 0 ? `🛡️ ${player.block}` : '';
-
-                const drawPile = document.getElementById('draw-pile');
-                const discardPile = document.getElementById('discard-pile');
-                drawPile.textContent = `抽牌堆: ${player.drawPile.length}`;
-                discardPile.textContent = `弃牌堆: ${player.discardPile.length}`;
-            }
-
-            function renderMap(state) {
-                const template = document.getElementById('map-screen-template').content.cloneNode(true);
-                gameScreen.innerHTML = '';
-                gameScreen.appendChild(template);
-                
-                document.getElementById('floor-number').textContent = state.floor;
-                const mapNodesContainer = document.getElementById('map-nodes');
-                mapNodesContainer.innerHTML = '';
-
-                state.map.nodes.forEach((row, rowIndex) => {
-                    const rowDiv = document.createElement('div');
-                    rowDiv.className = 'map-row';
-                    row.forEach((node, colIndex) => {
-                        const nodeDiv = document.createElement('div');
-                        nodeDiv.className = 'map-node';
-                        nodeDiv.textContent = NODE_EMOJIS[node.type] || node.type;
-                        nodeDiv.dataset.row = rowIndex;
-                        nodeDiv.dataset.col = colIndex;
-                        nodeDiv.title = node.type; // 鼠标悬停提示
+                    
+                    // 高亮可选路径
+                    if (rowIndex === state.floor + 1 && isPathAvailable(state.map.currentNode, node, rowIndex)) {
+                        nodeDiv.classList.add('available');
                         
-                        if (node.visited) {
-                            nodeDiv.classList.add('visited');
-                        }
-                        
-                        // 高亮可选路径
-                        if (rowIndex === state.floor + 1 && isPathAvailable(state.map.currentNode, node, rowIndex)) {
-                            nodeDiv.classList.add('available');
-                            
-                            // 为可选路径添加点击事件
-                            nodeDiv.addEventListener('click', () => {
-                                socket.emit('player_action', {
-                                    action: 'choose_path',
-                                    payload: { row: rowIndex, col: colIndex }
-                                });
+                        // 为可选路径添加点击事件
+                        nodeDiv.addEventListener('click', () => {
+                            socket.emit('player_action', {
+                                action: 'choose_path',
+                                payload: { row: rowIndex, col: colIndex }
                             });
-                        }
-                        
-                        rowDiv.appendChild(nodeDiv);
-                    });
-                    mapNodesContainer.appendChild(rowDiv);
-                });
-                
-                // 添加查看牌组按钮事件
-                document.getElementById('view-deck-btn').addEventListener('click', () => {
-                    renderDeckView(state.player.deck);
-                });
-            }
-            
-            // 判断路径是否可选
-            function isPathAvailable(currentNode, targetNode, targetRow) {
-                // 只能向上一层移动
-                if (targetRow !== gameState.floor + 1) {
-                    return false;
-                }
-                
-                // 简化的路径判断：允许45度角移动
-                const currentX = currentNode.x;
-                const currentY = currentNode.y;
-                const targetX = targetNode.x;
-                const targetY = targetNode.y;
-                
-                // 垂直距离必须为1
-                const verticalDist = targetY - currentY;
-                if (verticalDist !== 1) {
-                    return false;
-                }
-                
-                // 水平距离不能太远
-                const horizontalDist = Math.abs(targetX - currentX);
-                return horizontalDist <= 1;
-            }
-            
-            function renderDeckView(deck) {
-                const template = document.getElementById('deck-view-template').content.cloneNode(true);
-                gameScreen.innerHTML = '';
-                gameScreen.appendChild(template);
-                
-                const deckCards = document.getElementById('deck-cards');
-                
-                // 按类型分组卡牌
-                const cardsByType = {};
-                deck.forEach(card => {
-                    if (!cardsByType[card.card_type]) {
-                        cardsByType[card.card_type] = [];
+                        });
                     }
-                    cardsByType[card.card_type].push(card);
+                    
+                    rowDiv.appendChild(nodeDiv);
                 });
-                
-                // 为每种类型创建一个区域
-                for (const [type, cards] of Object.entries(cardsByType)) {
-                    const typeDiv = document.createElement('div');
-                    typeDiv.className = 'card-type-group';
-                    typeDiv.innerHTML = `<h3>${type} (${cards.length})</h3>`;
-                    
-                    const cardsContainer = document.createElement('div');
-                    cardsContainer.className = 'cards-container';
-                    
-                    cards.forEach(card => {
-                        const cardDiv = document.createElement('div');
-                        cardDiv.className = 'card small-card';
-                        if (card.upgraded) {
-                            cardDiv.classList.add('upgraded');
-                        }
-                        cardDiv.innerHTML = `
-                            <h5>${card.name} [${card.cost}]</h5>
-                            <p>${card.description}</p>
-                        `;
-                        cardsContainer.appendChild(cardDiv);
-                    });
-                    
-                    typeDiv.appendChild(cardsContainer);
-                    deckCards.appendChild(typeDiv);
-                }
-                
-                document.getElementById('close-deck-btn').addEventListener('click', () => {
-                    render(gameState);
-                });
+                mapNodesContainer.appendChild(rowDiv);
+            });
+            
+            // 添加查看牌组按钮事件
+            document.getElementById('view-deck-btn').addEventListener('click', () => {
+                renderDeckView(state.player.deck);
+            });
+        }
+        
+        // 判断路径是否可选
+        function isPathAvailable(currentNode, targetNode, targetRow) {
+            // 只能向上一层移动
+            if (targetRow !== gameState.floor + 1) {
+                return false;
             }
-
-            function renderCombat(state) {
-                const template = document.getElementById('combat-screen-template').content.cloneNode(true);
-                gameScreen.innerHTML = '';
-                gameScreen.appendChild(template);
-
-                // 渲染敌人
-                const enemiesArea = document.getElementById('enemies-area');
-                enemiesArea.innerHTML = '';
-                state.currentEnemies.forEach((enemy, index) => {
-                    const enemyDiv = document.createElement('div');
-                    enemyDiv.className = 'enemy';
-                    enemyDiv.innerHTML = `
-                        <h4>${enemy.name}</h4>
-                        <p>❤️ ${enemy.health}/${enemy.maxHealth}</p>
-                        <p>意图: ${enemy.intent || '无'} ${enemy.intentValue ? enemy.intentValue : ''}</p>
-                        ${enemy.block > 0 ? `<p>🛡️ ${enemy.block}</p>` : ''}
-                        ${enemy.strength > 0 ? `<p>💪 ${enemy.strength}</p>` : ''}
-                        ${enemy.poison > 0 ? `<p>☠️ ${enemy.poison}</p>` : ''}
-                    `;
-                    enemyDiv.dataset.index = index;
-                    // 点击选择为目标
-                    enemyDiv.addEventListener('click', (e) => {
-                        if (selectedTarget === e.currentTarget) {
-                            selectedTarget.classList.remove('selected-target');
-                            selectedTarget = null;
-                        } else {
-                            document.querySelectorAll('.enemy').forEach(en => en.classList.remove('selected-target'));
-                            selectedTarget = e.currentTarget;
-                            selectedTarget.classList.add('selected-target');
-                        }
-                    });
-                    enemiesArea.appendChild(enemyDiv);
-                });
-
-                // 渲染手牌
-                const handArea = document.getElementById('hand-area');
-                handArea.innerHTML = '';
-                state.player.hand.forEach((card, index) => {
+            
+            // 简化的路径判断：允许45度角移动
+            const currentX = currentNode.x;
+            const currentY = currentNode.y;
+            const targetX = targetNode.x;
+            const targetY = targetNode.y;
+            
+            // 垂直距离必须为1
+            const verticalDist = targetY - currentY;
+            if (verticalDist !== 1) {
+                return false;
+            }
+            
+            // 水平距离不能太远
+            const horizontalDist = Math.abs(targetX - currentX);
+            return horizontalDist <= 1;
+        }
+        
+        function renderDeckView(deck) {
+            const template = document.getElementById('deck-view-template').content.cloneNode(true);
+            gameScreen.innerHTML = '';
+            gameScreen.appendChild(template);
+            
+            const deckCards = document.getElementById('deck-cards');
+            
+            // 按类型分组卡牌
+            const cardsByType = {};
+            deck.forEach(card => {
+                if (!cardsByType[card.card_type]) {
+                    cardsByType[card.card_type] = [];
+                }
+                cardsByType[card.card_type].push(card);
+            });
+            
+            // 为每种类型创建一个区域
+            for (const [type, cards] of Object.entries(cardsByType)) {
+                const typeDiv = document.createElement('div');
+                typeDiv.className = 'card-type-group';
+                typeDiv.innerHTML = `<h3>${type} (${cards.length})</h3>`;
+                
+                const cardsContainer = document.createElement('div');
+                cardsContainer.className = 'cards-container';
+                
+                cards.forEach(card => {
                     const cardDiv = document.createElement('div');
-                    cardDiv.className = 'card';
+                    cardDiv.className = 'card small-card';
                     if (card.upgraded) {
                         cardDiv.classList.add('upgraded');
                     }
@@ -459,307 +496,254 @@
                         <h5>${card.name} [${card.cost}]</h5>
                         <p>${card.description}</p>
                     `;
-                    cardDiv.dataset.index = index;
-
-                    // 点击使用卡牌
-                    cardDiv.addEventListener('click', () => {
-                        let targetIndex = null;
-                        if (card.card_type === '攻击') {
-                            if (state.currentEnemies.length > 1) {
-                                if (!selectedTarget) {
-                                    alert('请先选择一个目标敌人！');
-                                    return;
-                                }
-                                targetIndex = parseInt(selectedTarget.dataset.index);
-                            } else {
-                                targetIndex = 0;
-                            }
-                        }
-                        socket.emit('player_action', {
-                            action: 'play_card',
-                            payload: { card_index: index, target_index: targetIndex }
-                        });
-                        if (selectedTarget) {
-                            selectedTarget.classList.remove('selected-target');
-                            selectedTarget = null;
-                        }
-                    });
-
-                    handArea.appendChild(cardDiv);
+                    cardsContainer.appendChild(cardDiv);
                 });
-
-                // 结束回合按钮
-                document.getElementById('end-turn-btn').addEventListener('click', () => {
-                    socket.emit('player_action', { action: 'end_turn' });
-                });
+                
+                typeDiv.appendChild(cardsContainer);
+                deckCards.appendChild(typeDiv);
             }
             
-            function renderRewards(state) {
-                const template = document.getElementById('rewards-screen-template').content.cloneNode(true);
-                gameScreen.innerHTML = '';
-                gameScreen.appendChild(template);
-                
-                const rewards = state.rewards;
-                
-                // 渲染卡牌奖励
-                if (rewards.cards && rewards.cards.length > 0) {
-                    const cardRewards = document.getElementById('card-rewards');
-                    cardRewards.innerHTML = '<h3>选择一张卡牌</h3>';
-                    
-                    const cardsContainer = document.createElement('div');
-                    cardsContainer.className = 'cards-container';
-                    
-                    rewards.cards.forEach((card, index) => {
-                        const cardDiv = document.createElement('div');
-                        cardDiv.className = 'card reward-card';
-                        if (card.upgraded) {
-                            cardDiv.classList.add('upgraded');
+            document.getElementById('close-deck-btn').addEventListener('click', () => {
+                // 根据当前屏幕状态重新渲染
+                if (gameState && gameState.screen) {
+                    switch(gameState.screen) {
+                        case 'map':
+                            renderMap(gameState);
+                            break;
+                        case 'combat':
+                            renderCombat(gameState);
+                            break;
+                        case 'rewards':
+                            renderRewards(gameState);
+                            break;
+                        case 'shop':
+                            renderShop(gameState);
+                            break;
+                        case 'rest':
+                            renderRestSite(gameState);
+                            break;
+                        case 'event':
+                            renderEvent(gameState);
+                            break;
+                        default:
+                            renderMap(gameState);
+                    }
+                } else {
+                    renderMainMenu();
+                }
+            });
+        }
+
+        function renderCombat(state) {
+            const template = document.getElementById('combat-screen-template').content.cloneNode(true);
+            gameScreen.innerHTML = '';
+            gameScreen.appendChild(template);
+
+            // 渲染敌人
+            const enemiesArea = document.getElementById('enemies-area');
+            enemiesArea.innerHTML = '';
+            state.currentEnemies.forEach((enemy, index) => {
+                const enemyDiv = document.createElement('div');
+                enemyDiv.className = 'enemy';
+                enemyDiv.innerHTML = `
+                    <h4>${enemy.name}</h4>
+                    <p>❤️ ${enemy.health}/${enemy.maxHealth}</p>
+                    <p>意图: ${enemy.intent || '无'} ${enemy.intentValue ? enemy.intentValue : ''}</p>
+                    ${enemy.block > 0 ? `<p>🛡️ ${enemy.block}</p>` : ''}
+                    ${enemy.strength > 0 ? `<p>💪 ${enemy.strength}</p>` : ''}
+                    ${enemy.poison > 0 ? `<p>☠️ ${enemy.poison}</p>` : ''}
+                `;
+                enemyDiv.dataset.index = index;
+                // 点击选择为目标
+                enemyDiv.addEventListener('click', (e) => {
+                    if (selectedTarget === e.currentTarget) {
+                        selectedTarget.classList.remove('selected-target');
+                        selectedTarget = null;
+                    } else {
+                        document.querySelectorAll('.enemy').forEach(en => en.classList.remove('selected-target'));
+                        selectedTarget = e.currentTarget;
+                        selectedTarget.classList.add('selected-target');
+                    }
+                });
+                enemiesArea.appendChild(enemyDiv);
+            });
+
+            // 渲染手牌
+            const handArea = document.getElementById('hand-area');
+            handArea.innerHTML = '';
+            state.player.hand.forEach((card, index) => {
+                const cardDiv = document.createElement('div');
+                cardDiv.className = 'card';
+                if (card.upgraded) {
+                    cardDiv.classList.add('upgraded');
+                }
+                cardDiv.innerHTML = `
+                    <h5>${card.name} [${card.cost}]</h5>
+                    <p>${card.description}</p>
+                `;
+                cardDiv.dataset.index = index;
+
+                // 点击使用卡牌
+                cardDiv.addEventListener('click', () => {
+                    let targetIndex = null;
+                    if (card.card_type === '攻击') {
+                        if (state.currentEnemies.length > 1) {
+                            if (!selectedTarget) {
+                                alert('请先选择一个目标敌人！');
+                                return;
+                            }
+                            targetIndex = parseInt(selectedTarget.dataset.index);
+                        } else {
+                            targetIndex = 0;
                         }
-                        cardDiv.innerHTML = `
-                            <h5>${card.name} [${card.cost}]</h5>
-                            <p>${card.description}</p>
-                        `;
-                        cardDiv.addEventListener('click', () => {
-                            socket.emit('player_action', {
-                                action: 'choose_reward',
-                                payload: { type: 'card', index }
-                            });
-                        });
-                        cardsContainer.appendChild(cardDiv);
+                    }
+                    socket.emit('player_action', {
+                        action: 'play_card',
+                        payload: { card_index: index, target_index: targetIndex }
                     });
-                    
-                    cardRewards.appendChild(cardsContainer);
-                }
+                    if (selectedTarget) {
+                        selectedTarget.classList.remove('selected-target');
+                        selectedTarget = null;
+                    }
+                });
+
+                handArea.appendChild(cardDiv);
+            });
+
+            // 结束回合按钮
+            document.getElementById('end-turn-btn').addEventListener('click', () => {
+                socket.emit('player_action', { action: 'end_turn' });
+            });
+        }
+        
+        function renderRewards(state) {
+            const template = document.getElementById('rewards-screen-template').content.cloneNode(true);
+            gameScreen.innerHTML = '';
+            gameScreen.appendChild(template);
+            
+            const rewards = state.rewards;
+            
+            // 渲染卡牌奖励
+            if (rewards.cards && rewards.cards.length > 0) {
+                const cardRewards = document.getElementById('card-rewards');
+                cardRewards.innerHTML = '<h3>选择一张卡牌</h3>';
                 
-                // 渲染金币奖励
-                if (rewards.gold) {
-                    const goldReward = document.getElementById('gold-reward');
-                    goldReward.innerHTML = `<h3>获得金币</h3><p>💰 ${rewards.gold} 金币</p>`;
-                    goldReward.addEventListener('click', () => {
-                        socket.emit('player_action', {
-                            action: 'choose_reward',
-                            payload: { type: 'gold' }
-                        });
-                    });
-                }
+                const cardsContainer = document.createElement('div');
+                cardsContainer.className = 'cards-container';
                 
-                // 渲染遗物奖励
-                if (rewards.relic) {
-                    const relicReward = document.getElementById('relic-reward');
-                    relicReward.innerHTML = `
-                        <h3>获得遗物</h3>
-                        <div class="relic-item">
-                            <h4>${rewards.relic.name}</h4>
-                            <p>${rewards.relic.description}</p>
-                        </div>
+                rewards.cards.forEach((card, index) => {
+                    const cardDiv = document.createElement('div');
+                    cardDiv.className = 'card reward-card';
+                    if (card.upgraded) {
+                        cardDiv.classList.add('upgraded');
+                    }
+                    cardDiv.innerHTML = `
+                        <h5>${card.name} [${card.cost}]</h5>
+                        <p>${card.description}</p>
                     `;
-                    relicReward.addEventListener('click', () => {
+                    cardDiv.addEventListener('click', () => {
                         socket.emit('player_action', {
                             action: 'choose_reward',
-                            payload: { type: 'relic' }
+                            payload: { type: 'card', index }
                         });
                     });
-                }
+                    cardsContainer.appendChild(cardDiv);
+                });
                 
-                // 跳过奖励按钮
-                document.getElementById('skip-rewards-btn').addEventListener('click', () => {
+                cardRewards.appendChild(cardsContainer);
+            }
+            
+            // 渲染金币奖励
+            if (rewards.gold) {
+                const goldReward = document.getElementById('gold-reward');
+                goldReward.innerHTML = `<h3>获得金币</h3><p>💰 ${rewards.gold} 金币</p>`;
+                goldReward.addEventListener('click', () => {
                     socket.emit('player_action', {
                         action: 'choose_reward',
-                        payload: { type: 'skip' }
+                        payload: { type: 'gold' }
                     });
                 });
             }
             
-            function renderShop(state) {
-                const template = document.getElementById('shop-screen-template').content.cloneNode(true);
-                gameScreen.innerHTML = '';
-                gameScreen.appendChild(template);
-                
-                const shop = state.shop || {};
-                
-                // 渲染卡牌商品
-                if (shop.cards && shop.cards.length > 0) {
-                    const shopCards = document.querySelector('#shop-cards .shop-items');
-                    shop.cards.forEach((card, index) => {
-                        const price = state.shopPrices?.cards?.[index] || 50;
-                        const cardDiv = document.createElement('div');
-                        cardDiv.className = 'shop-item card-item';
-                        cardDiv.innerHTML = `
-                            <div class="card shop-card ${card.upgraded ? 'upgraded' : ''}">
-                                <h5>${card.name} [${card.cost}]</h5>
-                                <p>${card.description}</p>
-                            </div>
-                            <div class="price">💰 ${price}</div>
-                        `;
-                        cardDiv.addEventListener('click', () => {
-                            socket.emit('player_action', {
-                                action: 'shop_purchase',
-                                payload: { type: 'card', index }
-                            });
-                        });
-                        shopCards.appendChild(cardDiv);
-                    });
-                }
-                
-                // 渲染遗物商品
-                if (shop.relics && shop.relics.length > 0) {
-                    const shopRelics = document.querySelector('#shop-relics .shop-items');
-                    shop.relics.forEach((relic, index) => {
-                        const price = state.shopPrices?.relics?.[index] || 150;
-                        const relicDiv = document.createElement('div');
-                        relicDiv.className = 'shop-item relic-item';
-                        relicDiv.innerHTML = `
-                            <div class="relic">
-                                <h5>${relic.name}</h5>
-                                <p>${relic.description}</p>
-                            </div>
-                            <div class="price">💰 ${price}</div>
-                        `;
-                        relicDiv.addEventListener('click', () => {
-                            socket.emit('player_action', {
-                                action: 'shop_purchase',
-                                payload: { type: 'relic', index }
-                            });
-                        });
-                        shopRelics.appendChild(relicDiv);
-                    });
-                }
-                
-                // 渲染药水商品
-                if (shop.potions && shop.potions.length > 0) {
-                    const shopPotions = document.querySelector('#shop-potions .shop-items');
-                    shop.potions.forEach((potion, index) => {
-                        const price = state.shopPrices?.potions?.[index] || 50;
-                        const potionDiv = document.createElement('div');
-                        potionDiv.className = 'shop-item potion-item';
-                        potionDiv.innerHTML = `
-                            <div class="potion">
-                                <h5>${potion.name}</h5>
-                                <p>${potion.description}</p>
-                            </div>
-                            <div class="price">💰 ${price}</div>
-                        `;
-                        potionDiv.addEventListener('click', () => {
-                            socket.emit('player_action', {
-                                action: 'shop_purchase',
-                                payload: { type: 'potion', index }
-                            });
-                        });
-                        shopPotions.appendChild(potionDiv);
-                    });
-                }
-                
-                // 离开商店按钮
-                document.getElementById('leave-shop-btn').addEventListener('click', () => {
+            // 渲染遗物奖励
+            if (rewards.relic) {
+                const relicReward = document.getElementById('relic-reward');
+                relicReward.innerHTML = `
+                    <h3>获得遗物</h3>
+                    <div class="relic-item">
+                        <h4>${rewards.relic.name}</h4>
+                        <p>${rewards.relic.description}</p>
+                    </div>
+                `;
+                relicReward.addEventListener('click', () => {
                     socket.emit('player_action', {
-                        action: 'shop_purchase',
-                        payload: { type: 'leave' }
+                        action: 'choose_reward',
+                        payload: { type: 'relic' }
                     });
                 });
             }
             
-            function renderRestSite(state) {
-                const template = document.getElementById('rest-site-template').content.cloneNode(true);
-                gameScreen.innerHTML = '';
-                gameScreen.appendChild(template);
-                
-                document.querySelectorAll('.rest-option').forEach(option => {
-                    option.addEventListener('click', () => {
-                        const choice = option.dataset.option;
-                        if (choice === 'upgrade') {
-                            renderUpgradeCard(state.player.deck);
-                        } else {
-                            socket.emit('player_action', {
-                                action: 'rest_site_choice',
-                                payload: { choice }
-                            });
-                        }
+            // 跳过奖励按钮
+            document.getElementById('skip-rewards-btn').addEventListener('click', () => {
+                socket.emit('player_action', {
+                    action: 'choose_reward',
+                    payload: { type: 'skip' }
+                });
+            });
+        }
+        
+        function renderShop(state) {
+            const template = document.getElementById('shop-screen-template').content.cloneNode(true);
+            gameScreen.innerHTML = '';
+            gameScreen.appendChild(template);
+            
+            // 实现商店功能
+            document.getElementById('leave-shop-btn').addEventListener('click', () => {
+                socket.emit('player_action', { action: 'leave_shop' });
+            });
+        }
+        
+        function renderRestSite(state) {
+            const template = document.getElementById('rest-site-template').content.cloneNode(true);
+            gameScreen.innerHTML = '';
+            gameScreen.appendChild(template);
+            
+            // 添加休息选项事件
+            document.querySelectorAll('.rest-option').forEach(option => {
+                option.addEventListener('click', () => {
+                    const choice = option.dataset.option;
+                    socket.emit('player_action', {
+                        action: 'rest_choice',
+                        payload: { choice }
                     });
                 });
-            }
+            });
+        }
+        
+        function renderEvent(state) {
+            const template = document.getElementById('event-screen-template').content.cloneNode(true);
+            gameScreen.innerHTML = '';
+            gameScreen.appendChild(template);
             
-            function renderUpgradeCard(deck) {
-                const template = document.getElementById('upgrade-card-template').content.cloneNode(true);
-                gameScreen.innerHTML = '';
-                gameScreen.appendChild(template);
-                
-                const upgradeableCards = deck.filter(card => !card.upgraded);
-                const cardsContainer = document.getElementById('upgradeable-cards');
-                
-                if (upgradeableCards.length === 0) {
-                    cardsContainer.innerHTML = '<p>没有可升级的卡牌</p>';
-                } else {
-                    upgradeableCards.forEach(card => {
-                        const cardDiv = document.createElement('div');
-                        cardDiv.className = 'card upgradeable-card';
-                        cardDiv.innerHTML = `
-                            <h5>${card.name} [${card.cost}]</h5>
-                            <p>${card.description}</p>
-                        `;
-                        cardDiv.addEventListener('click', () => {
-                            socket.emit('player_action', {
-                                action: 'upgrade_card',
-                                payload: { card_uid: card.id }
-                            });
-                        });
-                        cardsContainer.appendChild(cardDiv);
+            const event = state.currentEvent;
+            document.getElementById('event-title').textContent = event.title;
+            document.getElementById('event-description').textContent = event.description;
+            
+            const choicesDiv = document.getElementById('event-choices');
+            choicesDiv.innerHTML = '';
+            
+            event.choices.forEach((choice, index) => {
+                const button = document.createElement('button');
+                button.textContent = choice;
+                button.addEventListener('click', () => {
+                    socket.emit('player_action', {
+                        action: 'event_choice',
+                        payload: { choice_index: index }
                     });
-                }
-                
-                document.getElementById('back-to-rest-btn').addEventListener('click', () => {
-                    renderRestSite(gameState);
                 });
-            }
-            
-            function renderEvent(state) {
-                const template = document.getElementById('event-screen-template').content.cloneNode(true);
-                gameScreen.innerHTML = '';
-                gameScreen.appendChild(template);
-                
-                const event = state.currentEvent;
-                if (!event) {
-                    return;
-                }
-                
-                document.getElementById('event-title').textContent = event.name;
-                document.getElementById('event-description').textContent = event.description;
-                
-                const choicesContainer = document.getElementById('event-choices');
-                event.choices.forEach((choice, index) => {
-                    const choiceBtn = document.createElement('button');
-                    choiceBtn.textContent = choice;
-                    choiceBtn.addEventListener('click', () => {
-                        socket.emit('player_action', {
-                            action: 'handle_event',
-                            payload: { choice: index }
-                        });
-                    });
-                    choicesContainer.appendChild(choiceBtn);
-                });
-            }
-
-            // --- Socket.IO 事件监听 ---
-
-            socket.on('connect', () => {
-                console.log('Connected to server!');
-                renderMainMenu(); // 显示主菜单
+                choicesDiv.appendChild(button);
             });
-            
-            socket.on('disconnect', () => {
-                console.log('Disconnected from server!');
-                gameScreen.innerHTML = '<h1>已断开连接，请刷新页面</h1>';
-            });
-
-            socket.on('update_state', (state) => {
-                console.log('Received state update:', state);
-                render(state);
-            });
-            
-            socket.on('game_error', (data) => {
-                console.error('Game Error:', data.error);
-                alert(`发生错误: ${data.error}`);
-            });
-        });
+        }
     </script>
 </body>
 </html> 

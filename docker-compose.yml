@@ -1,6 +1,10 @@
 services:
   slay-the-spire:
-    build: .
+    image: slay-the-spire-web:latest
+    build:
+      context: .
+      cache_from:
+        - slay-the-spire-web:latest
     container_name: slay-the-spire-web
     ports:
       - "14514:14514"
